@@ -21,6 +21,22 @@ const dom = {
   themeToggle:   el('themeToggle'),
 };
 
+const MODEL_OPTIONS = {
+  gemini: [
+    { value: 'gemini-1.5-flash', label: 'gemini-1.5-flash — Recommended' },
+  ],
+  openai: [
+    { value: 'gpt-4o-mini', label: 'gpt-4o-mini — Recommended (fast + affordable)' },
+    { value: 'gpt-4o', label: 'gpt-4o — Most capable' },
+    { value: 'gpt-3.5-turbo', label: 'gpt-3.5-turbo — Most affordable' },
+  ],
+  groq: [
+    { value: 'llama-3.1-70b-versatile', label: 'llama-3.1-70b-versatile — Most capable Groq model' },
+    { value: 'llama-3.1-8b-instant', label: 'llama-3.1-8b-instant — Fast Groq model' },
+    { value: 'mixtral-8x7b-32768', label: 'mixtral-8x7b-32768 — Long-context Groq model' },
+  ],
+};
+
 (async () => {
   await restoreTheme();
   await loadSettings();
@@ -71,11 +87,7 @@ function updateProviderUI(provider) {
   dom.helpGroq.classList.toggle('hidden', !isGroq);
   dom.modelLabel.textContent = isGroq ? 'Groq Model' : isOpenAI ? 'OpenAI Model' : 'Model';
 
-  if (isGroq) {
-    dom.modelSelect.value = groqModelValue(dom.modelSelect.value);
-  } else if (isOpenAI) {
-    dom.modelSelect.value = openAIModelValue(dom.modelSelect.value);
-  }
+  renderModelOptions(provider);
 
   const placeholder = isOpenAI ? 'sk-…' : isGroq ? 'gsk_…' : 'AIza…';
   const providerName = isOpenAI ? 'OpenAI' : isGroq ? 'Groq' : 'Gemini';
@@ -165,6 +177,7 @@ function applyTheme(t) {
 function defaultModelForProvider(provider) {
   if (provider === 'groq') return 'llama-3.1-70b-versatile';
   if (provider === 'openai') return 'gpt-4o-mini';
+  if (provider === 'gemini') return 'gemini-1.5-flash';
   return 'gpt-4o-mini';
 }
 
@@ -176,4 +189,21 @@ function groqModelValue(value) {
   return ['llama-3.1-70b-versatile', 'llama-3.1-8b-instant', 'mixtral-8x7b-32768'].includes(value)
     ? value
     : 'llama-3.1-70b-versatile';
+}
+
+function renderModelOptions(provider) {
+  const options = MODEL_OPTIONS[provider] || MODEL_OPTIONS.openai;
+  const currentValue = dom.modelSelect.value;
+  const currentMatchesProvider = options.some(option => option.value === currentValue);
+  const nextValue = currentMatchesProvider ? currentValue : defaultModelForProvider(provider);
+
+  dom.modelSelect.innerHTML = '';
+  options.forEach(option => {
+    const node = document.createElement('option');
+    node.value = option.value;
+    node.textContent = option.label;
+    dom.modelSelect.appendChild(node);
+  });
+
+  dom.modelSelect.value = nextValue;
 }
