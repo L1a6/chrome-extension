@@ -14,6 +14,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
+  if (message.action === 'testApiKey') {
+    testApiKey(message, sendResponse);
+    return true;
+  }
+
   if (message.action === 'clearCache') {
     clearUrlCache(message.url)
       .then(() => sendResponse({ success: true }))
@@ -33,7 +38,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
 function isValidMessage(message) {
   if (!message || typeof message !== 'object') return false;
-  const validActions = ['summarize', 'clearCache', 'clearAllCache'];
+  const validActions = ['summarize', 'testApiKey', 'clearCache', 'clearAllCache'];
   return validActions.includes(message.action);
 }
 
@@ -99,7 +104,7 @@ async function callAI(content, title, settings) {
     );
   }
 
-  return await callGemini(prompt, apiKey);
+  return await callGemini(prompt, apiKey, settings.model || 'gemini-1.5-flash');
 }
 
 function buildPrompt(content, title) {
@@ -131,8 +136,8 @@ Requirements:
 Respond with ONLY the JSON object.`;
 }
 
-async function callGemini(prompt, apiKey) {
-  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
+async function callGemini(prompt, apiKey, model) {
+  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
 
   const res = await fetch(endpoint, {
     method: 'POST',
@@ -303,4 +308,93 @@ function sleep(ms) {
 
 function normalizeApiKey(apiKey) {
   return String(apiKey || '').trim().replace(/^['"]|['"]$/g, '');
+}
+
+async function testApiKey({ provider, apiKey, model }, sendResponse) {
+  try {
+    const normalizedKey = normalizeApiKey(apiKey);
+
+    if (provider === 'groq') {
+      const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${normalizedKey}`,
+        },
+        body: JSON.stringify({
+          model,
+          messages: [{ role: 'user', content: 'respond with ok' }],
+          max_tokens: 10,
+        }),
+      });
+
+      if (!res.ok) {
+        const errBody = await res.json().catch(() => ({}));
+        const errMsg = errBody?.error?.message || `Groq error (${res.status})`;
+        if (res.status === 401 || res.status === 403) {
+          sendResponse({ success: false, error: 'API key rejected by Groq. Check if the key is valid and active.' });
+        } else if (res.status === 404 || /model/i.test(errMsg)) {
+          sendResponse({ success: false, error: `Model not found: ${model}` });
+        } else {
+          sendResponse({ success: false, error: errMsg });
+        }
+        return;
+      }
+
+      sendResponse({ success: true, error: null });
+    } else if (provider === 'openai') {
+      const res = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${normalizedKey}`,
+        },
+        body: JSON.stringify({
+          model,
+          messages: [{ role: 'user', content: 'respond with ok' }],
+          max_tokens: 10,
+        }),
+      });
+
+      if (!res.ok) {
+        const errBody = await res.json().catch(() => ({}));
+        const errMsg = errBody?.error?.message || `OpenAI error (${res.status})`;
+        if (res.status === 401 || res.status === 403) {
+          sendResponse({ success: false, error: 'API key rejected by OpenAI. Check if the key is valid and active.' });
+        } else {
+          sendResponse({ success: false, error: errMsg });
+        }
+        return;
+      }
+
+      sendResponse({ success: true, error: null });
+    } else if (provider === 'gemini') {
+      const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${normalizedKey}`;
+      const res = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: 'respond with ok' }] }],
+          generationConfig: { maxOutputTokens: 10 },
+        }),
+      });
+
+      if (!res.ok) {
+        const errBody = await res.json().catch(() => ({}));
+        const errMsg = errBody?.error?.message || `Gemini error (${res.status})`;
+        if (res.status === 400 || /api_key/i.test(errMsg)) {
+          sendResponse({ success: false, error: 'API key rejected by Gemini. Check if the key is valid and active.' });
+        } else {
+          sendResponse({ success: false, error: errMsg });
+        }
+        return;
+      }
+
+      sendResponse({ success: true, error: null });
+    } else {
+      sendResponse({ success: false, error: 'Unknown provider' });
+    }
+  } catch (err) {
+    sendResponse({ success: false, error: err.message });
+  }
 }

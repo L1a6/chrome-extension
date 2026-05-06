@@ -18,12 +18,16 @@ const dom = {
   saveBtn:       el('saveBtn'),
   statusMsg:     el('statusMsg'),
   clearCacheBtn: el('clearCacheBtn'),
+  testKeyBtn:    el('testKeyBtn'),
   themeToggle:   el('themeToggle'),
 };
 
 const MODEL_OPTIONS = {
   gemini: [
-    { value: 'gemini-1.5-flash', label: 'gemini-1.5-flash — Recommended' },
+    { value: 'gemini-1.5-flash', label: 'gemini-1.5-flash — Fast & recommended' },
+    { value: 'gemini-1.5-flash-8b', label: 'gemini-1.5-flash-8b — Lightweight' },
+    { value: 'gemini-1.5-pro', label: 'gemini-1.5-pro — Most capable' },
+    { value: 'gemini-pro', label: 'gemini-pro — Stable (if flash unavailable)' },
   ],
   openai: [
     { value: 'gpt-4o-mini', label: 'gpt-4o-mini — Recommended (fast + affordable)' },
@@ -66,6 +70,7 @@ function bindEvents() {
   dom.radioOpenAI.addEventListener('change', () => updateProviderUI('openai'));
   dom.radioGroq.addEventListener('change', () => updateProviderUI('groq'));
   dom.saveBtn.addEventListener('click', saveSettings);
+  dom.testKeyBtn.addEventListener('click', testApiKey);
   dom.clearCacheBtn.addEventListener('click', clearAllCache);
   dom.revealBtn.addEventListener('click', toggleReveal);
   dom.themeToggle.addEventListener('click', toggleTheme);
@@ -79,7 +84,8 @@ function bindEvents() {
 function updateProviderUI(provider) {
   const isOpenAI = provider === 'openai';
   const isGroq = provider === 'groq';
-  const isHostedModelProvider = isOpenAI || isGroq;
+  const isGemini = provider === 'gemini';
+  const isHostedModelProvider = isOpenAI || isGroq || isGemini;
 
   dom.modelField.classList.toggle('hidden', !isHostedModelProvider);
   dom.helpGemini.classList.toggle('hidden', isHostedModelProvider);
@@ -206,4 +212,40 @@ function renderModelOptions(provider) {
   });
 
   dom.modelSelect.value = nextValue;
+}
+
+async function testApiKey() {
+  const provider = dom.radioOpenAI.checked ? 'openai' : dom.radioGroq.checked ? 'groq' : 'gemini';
+  const apiKey = dom.apiKeyInput.value.trim();
+  const model = dom.modelSelect.value;
+
+  if (!apiKey) {
+    showStatus('API key cannot be empty.', 'err');
+    return;
+  }
+
+  dom.testKeyBtn.disabled = true;
+  const originalText = dom.testKeyBtn.textContent;
+  dom.testKeyBtn.textContent = 'Testing…';
+
+  try {
+    const response = await chrome.runtime.sendMessage({
+      action: 'testApiKey',
+      provider,
+      apiKey,
+      model,
+    });
+
+    if (response?.success) {
+      showStatus('✓ API key is valid!', 'ok');
+    } else {
+      const errMsg = response?.error || 'Unknown error';
+      showStatus(`✗ ${errMsg}`, 'err');
+    }
+  } catch (err) {
+    showStatus(`✗ ${err.message}`, 'err');
+  } finally {
+    dom.testKeyBtn.disabled = false;
+    dom.testKeyBtn.textContent = originalText;
+  }
 }
