@@ -75,11 +75,12 @@ async function handleSummarize({ content, url, title }, sendResponse) {
 
 async function callAI(content, title, settings) {
   const prompt = buildPrompt(content, title);
+  const apiKey = normalizeApiKey(settings.apiKey);
 
   if (settings.provider === 'openai') {
     return await callOpenAICompatible(
       prompt,
-      settings.apiKey,
+      apiKey,
       settings.model || 'gpt-4o-mini',
       'https://api.openai.com/v1',
       'OpenAI',
@@ -90,7 +91,7 @@ async function callAI(content, title, settings) {
   if (settings.provider === 'groq') {
     return await callOpenAICompatible(
       prompt,
-      settings.apiKey,
+      apiKey,
       settings.model || 'llama-3.1-70b-versatile',
       'https://api.groq.com/openai/v1',
       'Groq',
@@ -98,7 +99,7 @@ async function callAI(content, title, settings) {
     );
   }
 
-  return await callGemini(prompt, settings.apiKey);
+  return await callGemini(prompt, apiKey);
 }
 
 function buildPrompt(content, title) {
@@ -188,8 +189,28 @@ async function callOpenAICompatible(prompt, apiKey, model, baseUrl, providerName
 
   if (!res.ok) {
     const errBody = await res.json().catch(() => ({}));
-    const errMsg = errBody?.error?.message || `${providerName} API error (${res.status})`;
-    throw new Error(errMsg);
+    const errMsg = errBody?.error?.message?.trim() || '';
+    const isAuthError = res.status === 401 || res.status === 403;
+
+    if (isAuthError) {
+      throw new Error(
+        `${providerName.toUpperCase()}_AUTH: ${providerName} rejected the API key. Open Settings, replace the key, and save again.`
+      );
+    }
+
+    if (res.status === 404 && providerName === 'Groq') {
+      throw new Error(
+        'GROQ_MODEL: The selected Groq model was not found. Pick a supported Groq model in Settings.'
+      );
+    }
+
+    if (res.status === 400 && providerName === 'Groq' && /model/i.test(errMsg)) {
+      throw new Error(
+        'GROQ_MODEL: The selected Groq model is not supported for this request. Pick a different Groq model in Settings.'
+      );
+    }
+
+    throw new Error(errMsg || `${providerName} API error (${res.status})`);
   }
 
   const data = await res.json();
@@ -278,4 +299,8 @@ function hashUrl(url) {
 
 function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+function normalizeApiKey(apiKey) {
+  return String(apiKey || '').trim().replace(/^['"]|['"]$/g, '');
 }

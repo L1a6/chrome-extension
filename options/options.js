@@ -99,11 +99,6 @@ async function saveSettings() {
     return;
   }
 
-  if (provider === 'groq' && !apiKey.startsWith('gsk_')) {
-    showStatus('Groq keys usually start with gsk_', 'err');
-    return;
-  }
-
   if (provider === 'gemini' && !apiKey.startsWith('AIza')) {
     showStatus('Gemini keys start with AIza…', 'err');
     return;

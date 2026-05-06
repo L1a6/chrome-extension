@@ -160,13 +160,18 @@ function handleApiError(code) {
     NO_API_KEY:           'API key not configured.',
     INSUFFICIENT_CONTENT: 'Not enough content found on this page.',
     INVALID_MESSAGE:      'Internal messaging error. Please reload.',
+    GROQ_AUTH:            'Groq rejected the API key. Open Settings and save a fresh key.',
+    GROQ_MODEL:           'The selected Groq model is not supported. Open Settings and choose another model.',
+    OPENAI_AUTH:          'OpenAI rejected the API key. Open Settings and save a fresh key.',
+    GEMINI_AUTH:          'Gemini rejected the API key. Open Settings and save a fresh key.',
     UNKNOWN_ERROR:        'Something went wrong. Please try again.',
   };
 
-  const msg = errorMap[code] || (typeof code === 'string' ? code : 'Something went wrong.');
+  const normalizedCode = typeof code === 'string' ? code.split(':')[0] : code;
+  const msg = errorMap[normalizedCode] || (typeof code === 'string' ? code : 'Something went wrong.');
   showError(msg);
 
-  if (code === 'NO_API_KEY') {
+  if (normalizedCode === 'NO_API_KEY' || /AUTH$/.test(normalizedCode)) {
     dom.errorSettingsBtn.style.display = 'block';
   }
 }
