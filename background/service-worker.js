@@ -77,8 +77,27 @@ async function callAI(content, title, settings) {
   const prompt = buildPrompt(content, title);
 
   if (settings.provider === 'openai') {
-    return await callOpenAI(prompt, settings.apiKey, settings.model || 'gpt-4o-mini');
+    return await callOpenAICompatible(
+      prompt,
+      settings.apiKey,
+      settings.model || 'gpt-4o-mini',
+      'https://api.openai.com/v1',
+      'OpenAI',
+      true
+    );
   }
+
+  if (settings.provider === 'groq') {
+    return await callOpenAICompatible(
+      prompt,
+      settings.apiKey,
+      settings.model || 'llama-3.1-70b-versatile',
+      'https://api.groq.com/openai/v1',
+      'Groq',
+      false
+    );
+  }
+
   return await callGemini(prompt, settings.apiKey);
 }
 
@@ -140,37 +159,42 @@ async function callGemini(prompt, apiKey) {
   return parseAIResponse(text);
 }
 
-async function callOpenAI(prompt, apiKey, model) {
-  const res = await fetch('https://api.openai.com/v1/chat/completions', {
+async function callOpenAICompatible(prompt, apiKey, model, baseUrl, providerName, useResponseFormat) {
+  const body = {
+    model,
+    messages: [
+      {
+        role: 'system',
+        content: 'You are a precise content analyst. Always respond with raw JSON only — no markdown, no code fences.',
+      },
+      { role: 'user', content: prompt },
+    ],
+    temperature: 0.2,
+    max_tokens: 1024,
+  };
+
+  if (useResponseFormat) {
+    body.response_format = { type: 'json_object' };
+  }
+
+  const res = await fetch(`${baseUrl}/chat/completions`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${apiKey}`,
     },
-    body: JSON.stringify({
-      model,
-      messages: [
-        {
-          role: 'system',
-          content: 'You are a precise content analyst. Always respond with raw JSON only — no markdown, no code fences.',
-        },
-        { role: 'user', content: prompt },
-      ],
-      temperature: 0.2,
-      max_tokens: 1024,
-      response_format: { type: 'json_object' },
-    }),
+    body: JSON.stringify(body),
   });
 
   if (!res.ok) {
     const errBody = await res.json().catch(() => ({}));
-    const errMsg = errBody?.error?.message || `OpenAI API error (${res.status})`;
+    const errMsg = errBody?.error?.message || `${providerName} API error (${res.status})`;
     throw new Error(errMsg);
   }
 
   const data = await res.json();
   const text = data?.choices?.[0]?.message?.content;
-  if (!text) throw new Error('Empty response from OpenAI');
+  if (!text) throw new Error(`Empty response from ${providerName}`);
 
   return parseAIResponse(text);
 }

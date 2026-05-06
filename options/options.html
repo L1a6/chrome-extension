@@ -76,15 +76,28 @@
                 <span class="radio-sub">gpt-4o-mini · Highly capable</span>
               </div>
             </label>
+            <label class="radio-card" id="labelGroq">
+              <input type="radio" name="provider" value="groq" id="radioGroq" />
+              <div class="radio-content">
+                <div class="radio-top">
+                  <span class="radio-name">Groq</span>
+                  <span class="radio-badge alt">Fast inference</span>
+                </div>
+                <span class="radio-sub">OpenAI-compatible · Llama / Mixtral models</span>
+              </div>
+            </label>
           </div>
         </div>
 
         <div class="field hidden" id="modelField">
-          <label class="field-label" for="modelSelect">OpenAI Model</label>
+          <label class="field-label" for="modelSelect" id="modelLabel">Model</label>
           <select class="select" id="modelSelect">
             <option value="gpt-4o-mini">gpt-4o-mini — Recommended (fast + affordable)</option>
             <option value="gpt-4o">gpt-4o — Most capable</option>
             <option value="gpt-3.5-turbo">gpt-3.5-turbo — Most affordable</option>
+            <option value="llama-3.1-70b-versatile">llama-3.1-70b-versatile — Most capable Groq model</option>
+            <option value="llama-3.1-8b-instant">llama-3.1-8b-instant — Fast Groq model</option>
+            <option value="mixtral-8x7b-32768">mixtral-8x7b-32768 — Long-context Groq model</option>
           </select>
         </div>
 
@@ -129,6 +142,16 @@
             <li>Click <strong>Create new secret key</strong></li>
             <li>Copy the key — you won't see it again</li>
             <li>Paste it above and save</li>
+          </ol>
+        </div>
+
+        <div class="help-box hidden" id="helpGroq">
+          <p class="help-title">How to get your Groq API key</p>
+          <ol class="help-steps">
+            <li>Go to <a href="https://console.groq.com/keys" target="_blank" rel="noopener" class="link">console.groq.com/keys</a></li>
+            <li>Sign in to your Groq account</li>
+            <li>Create an API key</li>
+            <li>Copy the key and paste it above</li>
           </ol>
         </div>
       </section>

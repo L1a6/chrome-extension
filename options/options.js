@@ -5,13 +5,16 @@ const el = id => document.getElementById(id);
 const dom = {
   radioGemini:   el('radioGemini'),
   radioOpenAI:   el('radioOpenAI'),
+  radioGroq:     el('radioGroq'),
   modelField:    el('modelField'),
+  modelLabel:    el('modelLabel'),
   modelSelect:   el('modelSelect'),
   apiKeyInput:   el('apiKeyInput'),
   revealBtn:     el('revealBtn'),
   keyHint:       el('keyHint'),
   helpGemini:    el('helpGemini'),
   helpOpenAI:    el('helpOpenAI'),
+  helpGroq:      el('helpGroq'),
   saveBtn:       el('saveBtn'),
   statusMsg:     el('statusMsg'),
   clearCacheBtn: el('clearCacheBtn'),
@@ -30,11 +33,13 @@ async function loadSettings() {
 
   if (s.provider === 'openai') {
     dom.radioOpenAI.checked = true;
+  } else if (s.provider === 'groq') {
+    dom.radioGroq.checked = true;
   } else {
     dom.radioGemini.checked = true;
   }
 
-  dom.modelSelect.value = s.model || 'gpt-4o-mini';
+  dom.modelSelect.value = s.model || defaultModelForProvider(s.provider || 'gemini');
   dom.apiKeyInput.value = s.apiKey || '';
 
   updateProviderUI(s.provider || 'gemini');
@@ -43,6 +48,7 @@ async function loadSettings() {
 function bindEvents() {
   dom.radioGemini.addEventListener('change', () => updateProviderUI('gemini'));
   dom.radioOpenAI.addEventListener('change', () => updateProviderUI('openai'));
+  dom.radioGroq.addEventListener('change', () => updateProviderUI('groq'));
   dom.saveBtn.addEventListener('click', saveSettings);
   dom.clearCacheBtn.addEventListener('click', clearAllCache);
   dom.revealBtn.addEventListener('click', toggleReveal);
@@ -56,16 +62,28 @@ function bindEvents() {
 
 function updateProviderUI(provider) {
   const isOpenAI = provider === 'openai';
-  dom.modelField.classList.toggle('hidden', !isOpenAI);
-  dom.helpGemini.classList.toggle('hidden', isOpenAI);
-  dom.helpOpenAI.classList.toggle('hidden', !isOpenAI);
+  const isGroq = provider === 'groq';
+  const isHostedModelProvider = isOpenAI || isGroq;
 
-  const placeholder = isOpenAI ? 'sk-…' : 'AIza…';
-  dom.apiKeyInput.placeholder = `Paste your ${isOpenAI ? 'OpenAI' : 'Gemini'} API key here… (${placeholder})`;
+  dom.modelField.classList.toggle('hidden', !isHostedModelProvider);
+  dom.helpGemini.classList.toggle('hidden', isHostedModelProvider);
+  dom.helpOpenAI.classList.toggle('hidden', !isOpenAI);
+  dom.helpGroq.classList.toggle('hidden', !isGroq);
+  dom.modelLabel.textContent = isGroq ? 'Groq Model' : isOpenAI ? 'OpenAI Model' : 'Model';
+
+  if (isGroq) {
+    dom.modelSelect.value = groqModelValue(dom.modelSelect.value);
+  } else if (isOpenAI) {
+    dom.modelSelect.value = openAIModelValue(dom.modelSelect.value);
+  }
+
+  const placeholder = isOpenAI ? 'sk-…' : isGroq ? 'gsk_…' : 'AIza…';
+  const providerName = isOpenAI ? 'OpenAI' : isGroq ? 'Groq' : 'Gemini';
+  dom.apiKeyInput.placeholder = `Paste your ${providerName} API key here… (${placeholder})`;
 }
 
 async function saveSettings() {
-  const provider = dom.radioOpenAI.checked ? 'openai' : 'gemini';
+  const provider = dom.radioOpenAI.checked ? 'openai' : dom.radioGroq.checked ? 'groq' : 'gemini';
   const apiKey   = dom.apiKeyInput.value.trim();
   const model    = dom.modelSelect.value;
 
@@ -78,6 +96,11 @@ async function saveSettings() {
 
   if (provider === 'openai' && !apiKey.startsWith('sk-')) {
     showStatus('OpenAI keys start with sk-', 'err');
+    return;
+  }
+
+  if (provider === 'groq' && !apiKey.startsWith('gsk_')) {
+    showStatus('Groq keys usually start with gsk_', 'err');
     return;
   }
 
@@ -142,4 +165,20 @@ function applyTheme(t) {
     moon.style.display = 'block';
     sun.style.display  = 'none';
   }
+}
+
+function defaultModelForProvider(provider) {
+  if (provider === 'groq') return 'llama-3.1-70b-versatile';
+  if (provider === 'openai') return 'gpt-4o-mini';
+  return 'gpt-4o-mini';
+}
+
+function openAIModelValue(value) {
+  return ['gpt-4o-mini', 'gpt-4o', 'gpt-3.5-turbo'].includes(value) ? value : 'gpt-4o-mini';
+}
+
+function groqModelValue(value) {
+  return ['llama-3.1-70b-versatile', 'llama-3.1-8b-instant', 'mixtral-8x7b-32768'].includes(value)
+    ? value
+    : 'llama-3.1-70b-versatile';
 }

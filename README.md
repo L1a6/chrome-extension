@@ -1,6 +1,6 @@
 # PageLens – AI Page Summarizer
 
-> A Manifest V3 Chrome Extension that extracts, analyzes, and summarizes any webpage using Google Gemini or OpenAI — with in-page highlighting, caching, and dark/light mode.
+> A Manifest V3 Chrome Extension that extracts, analyzes, and summarizes any webpage using Google Gemini, OpenAI, or Groq — with in-page highlighting, caching, and dark/light mode.
 
 ---
 
@@ -31,6 +31,9 @@ Install the extension → open any article → click the PageLens icon → click
 | OpenAI | gpt-4o-mini | Fast, affordable |
 | OpenAI | gpt-4o | Most capable |
 | OpenAI | gpt-3.5-turbo | Most affordable |
+| Groq | llama-3.1-70b-versatile | Fast OpenAI-compatible inference |
+| Groq | llama-3.1-8b-instant | Very fast Groq model |
+| Groq | mixtral-8x7b-32768 | Long-context Groq model |
 
 ---
 
@@ -80,6 +83,12 @@ Click the PageLens icon → click the **⚙ settings** icon (top-right of popup)
 1. Visit [platform.openai.com/api-keys](https://platform.openai.com/api-keys)
 2. Click **Create new secret key**
 3. Copy the key → paste it in PageLens Settings
+
+**To get a Groq API key:**
+1. Visit [console.groq.com/keys](https://console.groq.com/keys)
+2. Sign in to your Groq account
+3. Create a key
+4. Copy the key → paste it in PageLens Settings
 
 ---
 
