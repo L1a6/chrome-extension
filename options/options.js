@@ -117,11 +117,6 @@ async function saveSettings() {
     return;
   }
 
-  if (provider === 'gemini' && !apiKey.startsWith('AIza')) {
-    showStatus('Gemini keys start with AIza…', 'err');
-    return;
-  }
-
   const settings = { provider, model, apiKey };
   await chrome.storage.local.set({ settings });
   showStatus('Settings saved ✓', 'ok');
