@@ -1,0 +1,20 @@
+# Never commit secrets
+*.env
+.env.*
+config.local.js
+secrets.js
+
+# OS junk
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*~
+
+# Build artifacts (if you add a bundler later)
+dist/
+build/
+node_modules/
