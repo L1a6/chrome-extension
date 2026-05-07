@@ -24,10 +24,10 @@ const dom = {
 
 const MODEL_OPTIONS = {
   gemini: [
-    { value: 'gemini-1.5-flash', label: 'gemini-1.5-flash — Fast & recommended' },
-    { value: 'gemini-1.5-flash-8b', label: 'gemini-1.5-flash-8b — Lightweight' },
-    { value: 'gemini-1.5-pro', label: 'gemini-1.5-pro — Most capable' },
-    { value: 'gemini-pro', label: 'gemini-pro — Stable (if flash unavailable)' },
+    { value: 'gemini-2.5-flash', label: 'gemini-2.5-flash — Fast & recommended' },
+    { value: 'gemini-2.5-pro', label: 'gemini-2.5-pro — Most capable' },
+    { value: 'gemini-2.0-flash', label: 'gemini-2.0-flash — Stable alternative' },
+    { value: 'gemini-pro', label: 'gemini-pro — Legacy fallback' },
   ],
   openai: [
     { value: 'gpt-4o-mini', label: 'gpt-4o-mini — Recommended (fast + affordable)' },
@@ -59,7 +59,7 @@ async function loadSettings() {
     dom.radioGemini.checked = true;
   }
 
-  dom.modelSelect.value = s.model || defaultModelForProvider(s.provider || 'gemini');
+  dom.modelSelect.value = normalizeModelForProvider(s.provider || 'gemini', s.model);
   dom.apiKeyInput.value = s.apiKey || '';
 
   updateProviderUI(s.provider || 'gemini');
@@ -103,7 +103,7 @@ function updateProviderUI(provider) {
 async function saveSettings() {
   const provider = dom.radioOpenAI.checked ? 'openai' : dom.radioGroq.checked ? 'groq' : 'gemini';
   const apiKey   = dom.apiKeyInput.value.trim();
-  const model    = dom.modelSelect.value;
+  const model    = normalizeModelForProvider(provider, dom.modelSelect.value);
 
   if (!apiKey) {
     showStatus('API key cannot be empty.', 'err');
@@ -178,8 +178,30 @@ function applyTheme(t) {
 function defaultModelForProvider(provider) {
   if (provider === 'groq') return 'llama-3.1-70b-versatile';
   if (provider === 'openai') return 'gpt-4o-mini';
-  if (provider === 'gemini') return 'gemini-1.5-flash';
+  if (provider === 'gemini') return 'gemini-2.5-flash';
   return 'gpt-4o-mini';
+}
+
+function normalizeModelForProvider(provider, value) {
+  if (provider === 'groq') {
+    return ['llama-3.1-70b-versatile', 'llama-3.1-8b-instant', 'mixtral-8x7b-32768'].includes(value)
+      ? value
+      : 'llama-3.1-70b-versatile';
+  }
+
+  if (provider === 'openai') {
+    return ['gpt-4o-mini', 'gpt-4o', 'gpt-3.5-turbo'].includes(value)
+      ? value
+      : 'gpt-4o-mini';
+  }
+
+  if (provider === 'gemini') {
+    return ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-2.0-flash', 'gemini-pro'].includes(value)
+      ? value
+      : 'gemini-2.5-flash';
+  }
+
+  return value || defaultModelForProvider(provider);
 }
 
 function openAIModelValue(value) {
@@ -212,7 +234,7 @@ function renderModelOptions(provider) {
 async function testApiKey() {
   const provider = dom.radioOpenAI.checked ? 'openai' : dom.radioGroq.checked ? 'groq' : 'gemini';
   const apiKey = dom.apiKeyInput.value.trim();
-  const model = dom.modelSelect.value;
+  const model = normalizeModelForProvider(provider, dom.modelSelect.value);
 
   if (!apiKey) {
     showStatus('API key cannot be empty.', 'err');
@@ -224,12 +246,7 @@ async function testApiKey() {
   dom.testKeyBtn.textContent = 'Testing…';
 
   try {
-    const response = await chrome.runtime.sendMessage({
-      action: 'testApiKey',
-      provider,
-      apiKey,
-      model,
-    });
+    const response = await testProviderApiKey(provider, apiKey, model);
 
     if (response?.success) {
       showStatus('✓ API key is valid!', 'ok');
@@ -243,4 +260,116 @@ async function testApiKey() {
     dom.testKeyBtn.disabled = false;
     dom.testKeyBtn.textContent = originalText;
   }
+}
+
+async function testProviderApiKey(provider, apiKey, model) {
+  if (provider === 'openai') {
+    return testOpenAIKey(apiKey, model);
+  }
+
+  if (provider === 'groq') {
+    return testGroqKey(apiKey, model);
+  }
+
+  return testGeminiKey(apiKey, model);
+}
+
+async function testOpenAIKey(apiKey, model) {
+  const res = await fetch('https://api.openai.com/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({
+      model,
+      messages: [{ role: 'user', content: 'respond with ok' }],
+      max_tokens: 10,
+    }),
+  });
+
+  if (res.ok) return { success: true };
+
+  const errBody = await res.json().catch(() => ({}));
+  const errMsg = errBody?.error?.message || `OpenAI error (${res.status})`;
+  if (res.status === 401 || res.status === 403) {
+    return { success: false, error: 'API key rejected by OpenAI. Check if the key is valid and active.' };
+  }
+  return { success: false, error: errMsg };
+}
+
+async function testGroqKey(apiKey, model) {
+  const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({
+      model,
+      messages: [{ role: 'user', content: 'respond with ok' }],
+      max_tokens: 10,
+    }),
+  });
+
+  if (res.ok) return { success: true };
+
+  const errBody = await res.json().catch(() => ({}));
+  const errMsg = errBody?.error?.message || `Groq error (${res.status})`;
+  if (res.status === 401 || res.status === 403) {
+    return { success: false, error: 'API key rejected by Groq. Check if the key is valid and active.' };
+  }
+  if (res.status === 404 || /model/i.test(errMsg)) {
+    return { success: false, error: `Model not found: ${model}` };
+  }
+  return { success: false, error: errMsg };
+}
+
+async function testGeminiKey(apiKey, model) {
+  const candidates = [
+    model,
+    'gemini-2.5-flash',
+    'gemini-2.5-pro',
+    'gemini-2.0-flash',
+    'gemini-pro',
+  ].filter(Boolean);
+
+  const versions = ['v1', 'v1beta'];
+  let lastError = 'Unknown Gemini error';
+
+  for (const candidate of [...new Set(candidates)]) {
+    for (const version of versions) {
+      const res = await fetch(
+        `https://generativelanguage.googleapis.com/${version}/models/${candidate}:generateContent?key=${apiKey}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: 'respond with ok' }] }],
+            generationConfig: { maxOutputTokens: 10 },
+          }),
+        }
+      );
+
+      if (res.ok) return { success: true };
+
+      const errBody = await res.json().catch(() => ({}));
+      const errMsg = errBody?.error?.message || `Gemini error (${res.status})`;
+      lastError = errMsg;
+
+      if (res.status === 401 || res.status === 403) {
+        return { success: false, error: 'API key rejected by Gemini. Check if the key is valid and active.' };
+      }
+
+      if (res.status === 404 || /not found|not supported|model/i.test(errMsg)) {
+        continue;
+      }
+
+      if (/api_key/i.test(errMsg)) {
+        return { success: false, error: 'API key rejected by Gemini. Check if the key is valid and active.' };
+      }
+    }
+  }
+
+  return { success: false, error: lastError };
 }

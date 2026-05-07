@@ -104,7 +104,7 @@ async function callAI(content, title, settings) {
     );
   }
 
-  return await callGemini(prompt, apiKey, settings.model || 'gemini-1.5-flash');
+  return await callGemini(prompt, apiKey, settings.model || 'gemini-2.5-flash');
 }
 
 function buildPrompt(content, title) {
@@ -137,32 +137,58 @@ Respond with ONLY the JSON object.`;
 }
 
 async function callGemini(prompt, apiKey, model) {
-  const endpoint = `https://generativelanguage.googleapis.com/v1/models/${model}:generateContent?key=${apiKey}`;
+  const candidates = [
+    model,
+    'gemini-2.5-flash',
+    'gemini-2.5-pro',
+    'gemini-2.0-flash',
+    'gemini-pro',
+    'gemini-1.5-flash',
+    'gemini-1.5-pro',
+  ].filter(Boolean);
 
-  const res = await fetch(endpoint, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      contents: [{ parts: [{ text: prompt }] }],
-      generationConfig: {
-        temperature: 0.2,
-        maxOutputTokens: 1024,
-        candidateCount: 1,
-      },
-    }),
-  });
+  const versions = ['v1', 'v1beta'];
+  let lastError = 'Gemini API error';
 
-  if (!res.ok) {
-    const errBody = await res.json().catch(() => ({}));
-    const errMsg = errBody?.error?.message || `Gemini API error (${res.status})`;
-    throw new Error(errMsg);
+  for (const candidate of [...new Set(candidates)]) {
+    for (const version of versions) {
+      const endpoint = `https://generativelanguage.googleapis.com/${version}/models/${candidate}:generateContent?key=${apiKey}`;
+
+      const res = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: {
+            temperature: 0.2,
+            maxOutputTokens: 1024,
+            candidateCount: 1,
+          },
+        }),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (!text) throw new Error('Empty response from Gemini');
+        return parseAIResponse(text);
+      }
+
+      const errBody = await res.json().catch(() => ({}));
+      const errMsg = errBody?.error?.message || `Gemini API error (${res.status})`;
+      lastError = errMsg;
+
+      if (res.status === 401 || res.status === 403) {
+        throw new Error(`GEMINI_AUTH: Gemini rejected the API key. Open Settings, replace the key, and save again.`);
+      }
+
+      if (res.status === 404 || /not found|not supported|model/i.test(errMsg)) {
+        continue;
+      }
+    }
   }
 
-  const data = await res.json();
-  const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
-  if (!text) throw new Error('Empty response from Gemini');
-
-  return parseAIResponse(text);
+  throw new Error(lastError);
 }
 
 async function callOpenAICompatible(prompt, apiKey, model, baseUrl, providerName, useResponseFormat) {
