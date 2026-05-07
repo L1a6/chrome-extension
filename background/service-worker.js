@@ -133,6 +133,10 @@ Requirements:
 - wordCount: approximate word count of the original content (integer).
 - highlights: 3 to 5 short phrases (under 6 words each) that appear verbatim or near-verbatim in the content, suitable for in-page highlighting.
 - title: clean, concise title for the content.
+Rules:
+- Use double quotes for all keys and string values.
+- Do not include trailing commas.
+Return ONLY the JSON object. No extra text.
 Respond with ONLY the JSON object.`;
 }
 
@@ -330,7 +334,11 @@ function parseAIResponse(rawText) {
     try {
       parsed = JSON.parse(extracted);
     } catch {
-      throw new Error('AI returned malformed JSON — please try again.');
+      try {
+        parsed = JSON.parse(sanitizeJsonText(extracted));
+      } catch {
+        throw new Error('AI returned malformed JSON — please try again.');
+      }
     }
   }
 
@@ -347,6 +355,15 @@ function parseAIResponse(rawText) {
     title: String(parsed.title || ''),
     generatedAt: Date.now(),
   };
+}
+
+function sanitizeJsonText(text) {
+  return text
+    .replace(/[\u201C\u201D]/g, '"')
+    .replace(/[\u2018\u2019]/g, "'")
+    .replace(/,\s*([}\]])/g, '$1')
+    .replace(/\u0000/g, '')
+    .trim();
 }
 
 function extractFirstJsonObject(text) {
