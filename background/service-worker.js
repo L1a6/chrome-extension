@@ -315,7 +315,37 @@ async function clearAllCache() {
 
 async function getSettings() {
   const result = await chrome.storage.local.get('settings');
-  return result.settings || { provider: 'gemini', model: 'gpt-4o-mini', apiKey: '' };
+  const settings = result.settings || { provider: 'gemini', model: 'gemini-2.5-flash', apiKey: '' };
+  return {
+    ...settings,
+    model: normalizeModelForProvider(settings.provider, settings.model),
+  };
+}
+
+function normalizeModelForProvider(provider, value) {
+  if (provider === 'groq') {
+    return ['llama-3.1-70b-versatile', 'llama-3.1-8b-instant', 'mixtral-8x7b-32768'].includes(value)
+      ? value
+      : 'llama-3.1-70b-versatile';
+  }
+
+  if (provider === 'openai') {
+    return ['gpt-4o-mini', 'gpt-4o', 'gpt-3.5-turbo'].includes(value)
+      ? value
+      : 'gpt-4o-mini';
+  }
+
+  if (provider === 'gemini') {
+    if (value && value.startsWith('gemini-1.5')) {
+      return 'gemini-2.5-flash';
+    }
+
+    return ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-2.0-flash', 'gemini-pro'].includes(value)
+      ? value
+      : 'gemini-2.5-flash';
+  }
+
+  return value || 'gemini-2.5-flash';
 }
 
 function hashUrl(url) {
