@@ -143,8 +143,6 @@ async function callGemini(prompt, apiKey, model) {
     'gemini-2.5-pro',
     'gemini-2.0-flash',
     'gemini-pro',
-    'gemini-1.5-flash',
-    'gemini-1.5-pro',
   ].filter(Boolean);
 
   const versions = ['v1', 'v1beta'];
@@ -152,44 +150,105 @@ async function callGemini(prompt, apiKey, model) {
 
   for (const candidate of [...new Set(candidates)]) {
     for (const version of versions) {
-      const endpoint = `https://generativelanguage.googleapis.com/${version}/models/${candidate}:generateContent?key=${apiKey}`;
+      const result = await requestGeminiContent(prompt, apiKey, candidate, version);
+      if (result.ok) return parseAIResponse(result.text);
 
-      const res = await fetch(endpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: {
-            temperature: 0.2,
-            maxOutputTokens: 1024,
-            candidateCount: 1,
-            responseMimeType: 'application/json',
-          },
-        }),
-      });
+      lastError = result.errMsg || lastError;
 
-      if (res.ok) {
-        const data = await res.json();
-        const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
-        if (!text) throw new Error('Empty response from Gemini');
-        return parseAIResponse(text);
+      if (result.status === 401 || result.status === 403 || /api_key/i.test(lastError)) {
+        throw new Error('GEMINI_AUTH: Gemini rejected the API key. Open Settings, replace the key, and save again.');
       }
 
-      const errBody = await res.json().catch(() => ({}));
-      const errMsg = errBody?.error?.message || `Gemini API error (${res.status})`;
-      lastError = errMsg;
+      if (result.status === 404 || /not found|not supported|model/i.test(lastError)) {
+        continue;
+      }
+    }
+  }
 
-      if (res.status === 401 || res.status === 403) {
-        throw new Error(`GEMINI_AUTH: Gemini rejected the API key. Open Settings, replace the key, and save again.`);
+  const discovered = await discoverGeminiModels(apiKey, versions);
+  for (const candidate of discovered) {
+    for (const version of versions) {
+      const result = await requestGeminiContent(prompt, apiKey, candidate, version);
+      if (result.ok) return parseAIResponse(result.text);
+
+      lastError = result.errMsg || lastError;
+
+      if (result.status === 401 || result.status === 403 || /api_key/i.test(lastError)) {
+        throw new Error('GEMINI_AUTH: Gemini rejected the API key. Open Settings, replace the key, and save again.');
       }
 
-      if (res.status === 404 || /not found|not supported|model/i.test(errMsg)) {
+      if (result.status === 404 || /not found|not supported|model/i.test(lastError)) {
         continue;
       }
     }
   }
 
   throw new Error(lastError);
+}
+
+async function requestGeminiContent(prompt, apiKey, model, version) {
+  const endpoint = `https://generativelanguage.googleapis.com/${version}/models/${model}:generateContent?key=${apiKey}`;
+
+  const res = await fetch(endpoint, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      contents: [{ parts: [{ text: prompt }] }],
+      generationConfig: {
+        temperature: 0.2,
+        maxOutputTokens: 1024,
+        candidateCount: 1,
+        responseMimeType: 'application/json',
+      },
+    }),
+  });
+
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const errMsg = data?.error?.message || `Gemini API error (${res.status})`;
+    return { ok: false, status: res.status, errMsg };
+  }
+
+  const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+  if (!text) {
+    return { ok: false, status: res.status, errMsg: 'Empty response from Gemini' };
+  }
+
+  return { ok: true, text };
+}
+
+async function discoverGeminiModels(apiKey, versions) {
+  const models = [];
+
+  for (const version of versions) {
+    const res = await fetch(`https://generativelanguage.googleapis.com/${version}/models?key=${apiKey}`);
+    if (!res.ok) continue;
+
+    const data = await res.json().catch(() => ({}));
+    const list = Array.isArray(data.models) ? data.models : [];
+
+    for (const model of list) {
+      const name = model?.name || '';
+      const methods = model?.supportedGenerationMethods || [];
+      if (!name || !Array.isArray(methods) || !methods.includes('generateContent')) continue;
+      models.push(name.replace(/^models\//, ''));
+    }
+  }
+
+  return rankGeminiModels([...new Set(models)]);
+}
+
+function rankGeminiModels(models) {
+  const score = name => {
+    if (name.includes('flash')) return 0;
+    if (name.includes('pro')) return 1;
+    return 2;
+  };
+
+  return models.slice().sort((a, b) => {
+    const diff = score(a) - score(b);
+    return diff !== 0 ? diff : a.localeCompare(b);
+  });
 }
 
 async function callOpenAICompatible(prompt, apiKey, model, baseUrl, providerName, useResponseFormat) {
