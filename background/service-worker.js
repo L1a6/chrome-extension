@@ -163,6 +163,7 @@ async function callGemini(prompt, apiKey, model) {
             temperature: 0.2,
             maxOutputTokens: 1024,
             candidateCount: 1,
+            responseMimeType: 'application/json',
           },
         }),
       });
@@ -262,7 +263,16 @@ function parseAIResponse(rawText) {
   try {
     parsed = JSON.parse(cleaned);
   } catch {
-    throw new Error('AI returned malformed JSON — please try again.');
+    const extracted = extractFirstJsonObject(cleaned);
+    if (!extracted) {
+      throw new Error('AI returned malformed JSON — please try again.');
+    }
+
+    try {
+      parsed = JSON.parse(extracted);
+    } catch {
+      throw new Error('AI returned malformed JSON — please try again.');
+    }
   }
 
   if (!Array.isArray(parsed.summary)) {
@@ -278,6 +288,45 @@ function parseAIResponse(rawText) {
     title: String(parsed.title || ''),
     generatedAt: Date.now(),
   };
+}
+
+function extractFirstJsonObject(text) {
+  const start = text.indexOf('{');
+  if (start === -1) return null;
+
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+
+  for (let i = start; i < text.length; i++) {
+    const ch = text[i];
+
+    if (inString) {
+      if (escaped) {
+        escaped = false;
+      } else if (ch === '\\') {
+        escaped = true;
+      } else if (ch === '"') {
+        inString = false;
+      }
+      continue;
+    }
+
+    if (ch === '"') {
+      inString = true;
+      continue;
+    }
+
+    if (ch === '{') depth++;
+    if (ch === '}') {
+      depth--;
+      if (depth === 0) {
+        return text.slice(start, i + 1);
+      }
+    }
+  }
+
+  return null;
 }
 
 async function getCachedSummary(url) {
